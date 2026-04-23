@@ -2,10 +2,12 @@
  * Triggers OCR + spell-check for an artwork.
  * POST /api/artwork/{id}/ocr
  *
- * We normalize the uploaded image to a consistent PNG, run tesseract.js
- * (English + Arabic), spell-check each detected word, and persist the
- * resulting OCRWord rows. The response returns the words so the UI can
- * immediately render them.
+ * Pipeline:
+ *  1. Normalize the uploaded image to a consistent PNG canvas.
+ *  2. Run Tesseract (primary, English + Arabic) to extract word bboxes.
+ *  3. Run PaddleOCR (secondary, English-only) in parallel on the same image.
+ *  4. Dual-engine vote to suppress Tesseract false-positive misspellings.
+ *  5. Persist OCRWord rows and transition the artwork to PENDING_REVIEW.
  */
 import { NextResponse } from "next/server";
 import path from "node:path";
@@ -14,7 +16,8 @@ import { requireSession } from "@/lib/session";
 import { artworkDir } from "@/lib/storage";
 import { normalizeArtwork } from "@/lib/image";
 import { recognizeWords } from "@/lib/ocr";
-import { checkWord } from "@/lib/spellcheck";
+import { paddleWords } from "@/lib/ocr-paddle";
+import { voteWords } from "@/lib/ocr-vote";
 
 export async function POST(
   _req: Request,
@@ -41,29 +44,20 @@ export async function POST(
     );
   }
 
-  const words = await recognizeWords(normalized);
+  // Run both engines in parallel. PaddleOCR is wrapped in try/catch inside
+  // the module so a model-load failure just yields an empty array and we
+  // fall back cleanly to Tesseract-only.
+  const [tesseractOut, paddleOut] = await Promise.all([
+    recognizeWords(normalized),
+    paddleWords(normalized),
+  ]);
 
-  // Spell check each non-trivial word.
-  const checked = await Promise.all(
-    words.map(async (w) => {
-      if (!w.text || w.text.length < 2) {
-        return { ...w, isMisspelled: false, language: "other" as const, suggestions: [] as string[] };
-      }
-      const result = await checkWord(w.text);
-      return {
-        ...w,
-        isMisspelled: result.isMisspelled,
-        language: result.language,
-        suggestions: result.suggestions,
-      };
-    }),
-  );
+  const voted = await voteWords(tesseractOut, paddleOut);
 
-  // Replace existing OCRWord rows atomically.
   await prisma.$transaction([
     prisma.oCRWord.deleteMany({ where: { artworkId: artwork.id } }),
     prisma.oCRWord.createMany({
-      data: checked.map((w) => ({
+      data: voted.map((w) => ({
         artworkId: artwork.id,
         text: w.text,
         language: w.language === "other" ? "other" : w.language,
@@ -73,7 +67,8 @@ export async function POST(
         bboxH: Math.round(w.bbox.h),
         confidence: w.confidence,
         isMisspelled: w.isMisspelled,
-        suggestions: w.suggestions.length > 0 ? JSON.stringify(w.suggestions) : null,
+        suggestions:
+          w.suggestions.length > 0 ? JSON.stringify(w.suggestions) : null,
       })),
     }),
     prisma.artwork.update({
@@ -85,10 +80,14 @@ export async function POST(
     }),
   ]);
 
-  const misspelledCount = checked.filter((w) => w.isMisspelled).length;
+  const misspelledCount = voted.filter((w) => w.isMisspelled).length;
   return NextResponse.json({
     ok: true,
-    totalWords: checked.length,
+    totalWords: voted.length,
     misspelledCount,
+    engines: {
+      tesseract: tesseractOut.length,
+      paddle: paddleOut.length,
+    },
   });
 }

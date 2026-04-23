@@ -87,20 +87,23 @@ model OCRWord {
 }
 
 model PrintJob {
-  id             String      @id @default(cuid())
-  artworkId      String
-  artwork        Artwork     @relation(fields: [artworkId], references: [id])
-  originalPath   String
-  alignedPath    String?
-  diffPath       String?
-  reportJsonPath String?
-  status         PrintStatus @default(PROCESSING)
-  diffScore      Float?      // 0 (identical) to 1 (completely different)
-  verdict        String?     // "MATCH" | "MISMATCH"
-  uploadedById   String
-  uploadedBy     User        @relation("UploadedPrint", fields: [uploadedById], references: [id])
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id               String      @id @default(cuid())
+  artworkId        String
+  artwork          Artwork     @relation(fields: [artworkId], references: [id])
+  originalPath     String
+  alignedPath      String?
+  diffPath         String?
+  reportJsonPath   String?
+  status           PrintStatus @default(PROCESSING)
+  diffScore        Float?      // 0 (identical) to 1 (completely different)
+  verdict          String?     // "MATCH" | "MISMATCH"
+  defectCount      Int?        // number of distinct defect regions detected
+  alignmentMethod  String?     // "homography" | "fallback-resize"
+  goodMatches      Int?        // number of feature-match pairs passing Lowe's ratio test
+  uploadedById     String
+  uploadedBy       User        @relation("UploadedPrint", fields: [uploadedById], references: [id])
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   alerts Alert[]
 }
