@@ -1,0 +1,146 @@
+// Prisma schema for Carton QC MVP.
+// Uses SQLite for zero-config local dev; swap `provider` to `postgresql` for prod.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  REVIEWER
+  QC_INSPECTOR
+  OPERATOR
+}
+
+enum ArtworkStatus {
+  PENDING_OCR
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum PrintStatus {
+  PROCESSING
+  MATCH
+  MISMATCH
+  FAILED
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String?
+  hashedPassword String
+  role           Role     @default(OPERATOR)
+  createdAt      DateTime @default(now())
+
+  artworks        Artwork[]       @relation("UploadedArtwork")
+  reviewedArtwork Artwork[]       @relation("ReviewedArtwork")
+  prints          PrintJob[]      @relation("UploadedPrint")
+  alertsAck       Alert[]         @relation("AckAlerts")
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+}
+
+model Artwork {
+  id             String        @id @default(cuid())
+  title          String
+  originalPath   String        // storage/artwork/{id}/original.{ext}
+  normalizedPath String?       // storage/artwork/{id}/normalized.png
+  ocrJsonPath    String?       // storage/artwork/{id}/ocr.json
+  status         ArtworkStatus @default(PENDING_OCR)
+  uploadedById   String
+  uploadedBy     User          @relation("UploadedArtwork", fields: [uploadedById], references: [id])
+  reviewedById   String?
+  reviewedBy     User?         @relation("ReviewedArtwork", fields: [reviewedById], references: [id])
+  reviewedAt     DateTime?
+  rejectReason   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  words  OCRWord[]
+  prints PrintJob[]
+}
+
+model OCRWord {
+  id           String  @id @default(cuid())
+  artworkId    String
+  artwork      Artwork @relation(fields: [artworkId], references: [id], onDelete: Cascade)
+  text         String
+  language     String  // "en" | "ar"
+  bboxX        Int
+  bboxY        Int
+  bboxW        Int
+  bboxH        Int
+  confidence   Float
+  isMisspelled Boolean @default(false)
+  suggestions  String? // JSON array of suggestion strings
+  overrideText String? // reviewer-accepted correction
+  createdAt    DateTime @default(now())
+
+  @@index([artworkId])
+}
+
+model PrintJob {
+  id             String      @id @default(cuid())
+  artworkId      String
+  artwork        Artwork     @relation(fields: [artworkId], references: [id])
+  originalPath   String
+  alignedPath    String?
+  diffPath       String?
+  reportJsonPath String?
+  status         PrintStatus @default(PROCESSING)
+  diffScore      Float?      // 0 (identical) to 1 (completely different)
+  verdict        String?     // "MATCH" | "MISMATCH"
+  uploadedById   String
+  uploadedBy     User        @relation("UploadedPrint", fields: [uploadedById], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  alerts Alert[]
+}
+
+model Alert {
+  id             String   @id @default(cuid())
+  printJobId     String
+  printJob       PrintJob @relation(fields: [printJobId], references: [id], onDelete: Cascade)
+  severity       String   @default("HIGH") // HIGH | MEDIUM | LOW
+  message        String
+  acknowledgedById String?
+  acknowledgedBy   User?  @relation("AckAlerts", fields: [acknowledgedById], references: [id])
+  acknowledgedAt DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([printJobId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  metadata  String?  // JSON
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+}

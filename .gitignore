@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local storage (uploaded artwork / prints)
+/storage
+
+# sqlite db + journal
+/prisma/dev.db
+/prisma/dev.db-journal
+
+# local-only tesseract.js language caches
+/lang-data
+*.traineddata
+
+# auto-generated route types
+/.next/types
