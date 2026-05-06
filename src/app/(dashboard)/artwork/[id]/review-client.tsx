@@ -83,11 +83,12 @@ export default function ArtworkReview({
       ),
     [words],
   );
+  // Count of dieline annotation tokens that bypassed spell-check entirely
+  // (dimensions, part codes, panel labels, mm/in/x sizes). Surfaced in the
+  // subtitle so reviewers know the system saw and excluded them — they
+  // never enter the issue list because they aren't typos.
   const filteredCount = useMemo(
-    () =>
-      words.filter(
-        (w) => w.isMisspelled && (w.isAnnotation || w.isOutsidePrintable),
-      ).length,
+    () => words.filter((w) => w.isAnnotation).length,
     [words],
   );
   const decided =
