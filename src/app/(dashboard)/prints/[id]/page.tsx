@@ -3,6 +3,11 @@ import Link from "next/link";
 import fs from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { toPublicUrl } from "@/lib/storage";
+import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { MotionPage } from "@/components/ui/MotionPage";
+import InspectionClient from "./inspection-client";
 
 type Report = {
   width: number;
@@ -27,6 +32,23 @@ async function loadReport(reportPath: string | null): Promise<Report | null> {
     return null;
   }
 }
+
+const STATUS_TONE: Record<
+  string,
+  "neutral" | "warning" | "success" | "danger" | "info"
+> = {
+  PROCESSING: "info",
+  MATCH: "success",
+  MISMATCH: "danger",
+  FAILED: "warning",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  PROCESSING: "Analyzing",
+  MATCH: "Match",
+  MISMATCH: "Mismatch",
+  FAILED: "Failed",
+};
 
 export default async function PrintDetail({
   params,
@@ -55,130 +77,134 @@ export default async function PrintDetail({
   const report = await loadReport(job.reportJsonPath);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">
-          Print vs. {job.artwork.title}
-        </h1>
-        <p className="text-sm text-slate-500">
-          Uploaded by {job.uploadedBy?.name ?? job.uploadedBy?.email} ·{" "}
-          <b>{job.status}</b>
-          {job.diffScore != null && (
-            <> · diff {(job.diffScore * 100).toFixed(2)}%</>
-          )}
-          {job.defectCount != null && <> · {job.defectCount} defect regions</>}
-          {job.alignmentMethod && (
-            <>
-              {" "}· alignment:{" "}
-              <span className="font-mono text-xs">
-                {job.alignmentMethod}
-                {job.goodMatches != null && ` (${job.goodMatches} matches)`}
-              </span>
-            </>
-          )}
-        </p>
-      </div>
+    <MotionPage>
+      <PageHeader
+        title="Post-Print Inspection"
+        subtitle={`Step 2 of 2 — ${job.artwork.title}`}
+        actions={
+          <Badge tone={STATUS_TONE[job.status] ?? "neutral"} withDot>
+            {STATUS_LABEL[job.status] ?? job.status}
+          </Badge>
+        }
+      />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <ImgPanel title="Approved artwork" url={artworkUrl} />
-        <ImgPanel
-          title="Printed carton (aligned)"
-          url={alignedUrl ?? originalUrl}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+        <InspectionClient
+          artworkUrl={artworkUrl}
+          alignedUrl={alignedUrl ?? originalUrl}
+          diffUrl={diffUrl}
+          regions={report?.regions ?? []}
+          imageWidth={report?.width ?? 1}
+          imageHeight={report?.height ?? 1}
+          status={job.status}
+          diffScore={job.diffScore}
         />
-        <ImgPanel title="Defect overlay" url={diffUrl} />
+
+        <div className="space-y-5">
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold text-slate-900">
+              Inspection summary
+            </h3>
+            <dl className="mt-3 space-y-3 text-sm">
+              <Row label="Job ID">
+                <span className="font-mono text-xs">
+                  PJ-{job.id.slice(-8).toUpperCase()}
+                </span>
+              </Row>
+              <Row label="Artwork">{job.artwork.title}</Row>
+              <Row label="Uploaded by">
+                {job.uploadedBy?.name ?? job.uploadedBy?.email}
+              </Row>
+              <Row label="Diff score">
+                {job.diffScore != null
+                  ? `${(job.diffScore * 100).toFixed(2)}%`
+                  : "—"}
+              </Row>
+              <Row label="Defect regions">
+                {job.defectCount ?? report?.regions.length ?? "—"}
+              </Row>
+              <Row label="Alignment">
+                <span className="font-mono text-xs">
+                  {job.alignmentMethod ?? "—"}
+                  {job.goodMatches != null && ` (${job.goodMatches} matches)`}
+                </span>
+              </Row>
+              <Row label="Created">
+                {job.createdAt.toISOString().slice(0, 19).replace("T", " ")}
+              </Row>
+            </dl>
+          </Card>
+
+          {job.alerts.length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-sm font-semibold text-slate-900">
+                Linked alerts
+              </h3>
+              <ul className="mt-3 space-y-2 text-sm">
+                {job.alerts.map((a) => {
+                  const tone =
+                    a.severity === "HIGH"
+                      ? "danger"
+                      : a.severity === "MEDIUM"
+                        ? "warning"
+                        : "info";
+                  return (
+                    <li
+                      key={a.id}
+                      className="rounded-lg border border-slate-100 p-3"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge tone={tone}>{a.severity}</Badge>
+                        {a.acknowledgedAt ? (
+                          <span className="text-xs text-emerald-600">
+                            Acknowledged
+                          </span>
+                        ) : (
+                          <Link
+                            href="/alerts"
+                            className="text-xs font-medium text-[var(--color-brand-600)]"
+                          >
+                            Review →
+                          </Link>
+                        )}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {a.message}
+                      </div>
+                      {a.acknowledgedAt && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          By{" "}
+                          {a.acknowledgedBy?.name ??
+                            a.acknowledgedBy?.email}{" "}
+                          on{" "}
+                          {a.acknowledgedAt
+                            .toISOString()
+                            .slice(0, 10)}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          )}
+        </div>
       </div>
-
-      {report && report.regions.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-sm font-medium text-slate-900">
-            Defect regions ({report.regions.length})
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Sorted by bounding-box size. Colour on the overlay:{" "}
-            <span className="text-red-600">red = large</span>,{" "}
-            <span className="text-orange-600">orange = medium</span>,{" "}
-            <span className="text-yellow-600">yellow = small</span>.
-          </p>
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead className="text-left text-slate-500">
-                <tr>
-                  <th className="py-1 pr-4">#</th>
-                  <th className="py-1 pr-4">Position (x, y)</th>
-                  <th className="py-1 pr-4">Size (w × h)</th>
-                  <th className="py-1 pr-4">Severity</th>
-                  <th className="py-1 pr-4">Kind</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.regions.slice(0, 20).map((r, i) => (
-                  <tr key={i} className="border-t border-slate-100">
-                    <td className="py-1 pr-4 font-mono">{i + 1}</td>
-                    <td className="py-1 pr-4 font-mono">
-                      {r.x}, {r.y}
-                    </td>
-                    <td className="py-1 pr-4 font-mono">
-                      {r.w} × {r.h}
-                    </td>
-                    <td className="py-1 pr-4 font-mono">
-                      {(r.severity * 100).toFixed(0)}%
-                    </td>
-                    <td className="py-1 pr-4 uppercase">{r.kind}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {report.regions.length > 20 && (
-              <p className="mt-2 text-xs text-slate-400">
-                … {report.regions.length - 20} more regions, see the overlay.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {job.alerts.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <div className="font-medium text-red-800">Alerts</div>
-          <ul className="mt-2 space-y-1 text-sm text-red-900">
-            {job.alerts.map((a) => (
-              <li key={a.id}>
-                [{a.severity}] {a.message}
-                {a.acknowledgedAt ? (
-                  <>
-                    {" "}— acked by{" "}
-                    {a.acknowledgedBy?.name ?? a.acknowledgedBy?.email} on{" "}
-                    {a.acknowledgedAt.toISOString().slice(0, 10)}
-                  </>
-                ) : (
-                  <>
-                    {" "}
-                    <Link href="/alerts" className="underline">
-                      review
-                    </Link>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    </MotionPage>
   );
 }
 
-function ImgPanel({ title, url }: { title: string; url: string | null }) {
+function Row({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="text-xs uppercase text-slate-500">{title}</div>
-      <div className="mt-2 flex h-64 items-center justify-center bg-slate-50">
-        {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={title} className="max-h-full max-w-full" />
-        ) : (
-          <span className="text-xs text-slate-400">not available</span>
-        )}
-      </div>
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-xs text-slate-500">{label}</dt>
+      <dd className="text-right text-slate-800">{children}</dd>
     </div>
   );
 }
