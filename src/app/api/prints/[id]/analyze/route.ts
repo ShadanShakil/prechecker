@@ -56,6 +56,7 @@ export async function POST(
       alignedOutPath: alignedPath,
       diffOutPath: diffPath,
       mismatchThreshold: isFinite(threshold) ? threshold : 0.02,
+      maskPath: job.artwork.printableMaskPath,
     });
   } catch (err) {
     console.error("[prints/analyze] diff failed", err);
@@ -81,6 +82,10 @@ export async function POST(
       defectCount: result.regions.length,
       alignmentMethod: result.alignmentMethod,
       goodMatches: result.goodMatches,
+      alignmentConfidence: result.alignmentConfidence,
+      maskedDiffScore: result.maskedDiffScore,
+      globalDiffScore: result.globalDiffScore,
+      statusReason: result.statusReason,
     },
   });
 

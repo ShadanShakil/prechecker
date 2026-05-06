@@ -36,6 +36,8 @@ export default async function ArtworkDetailPage({
     bbox: { x: w.bboxX, y: w.bboxY, w: w.bboxW, h: w.bboxH },
     confidence: w.confidence,
     isMisspelled: w.isMisspelled,
+    isAnnotation: w.isAnnotation,
+    isOutsidePrintable: w.isOutsidePrintable,
     suggestions: w.suggestions ? (JSON.parse(w.suggestions) as string[]) : [],
     overrideText: w.overrideText,
   }));

@@ -20,6 +20,7 @@
 import type { OCRWord } from "./ocr";
 import type { PaddleLineDetection } from "./ocr-paddle";
 import { checkWord } from "./spellcheck";
+import { classifyAnnotation } from "./annotation";
 
 export type VotedWord = {
   text: string; // final text (possibly replaced by Paddle)
@@ -28,6 +29,8 @@ export type VotedWord = {
   bbox: { x: number; y: number; w: number; h: number };
   language: "en" | "ar" | "other";
   isMisspelled: boolean;
+  /** True if the token is a dieline annotation (dimension, code, panel label). */
+  isAnnotation: boolean;
   suggestions: string[];
   /** Which engine(s) saw this word. */
   source: "tesseract" | "paddle" | "both";
@@ -83,6 +86,24 @@ export async function voteWords(
         bbox: w.bbox,
         language: "other",
         isMisspelled: false,
+        isAnnotation: classifyAnnotation(w.text).isAnnotation,
+        suggestions: [],
+        source: "tesseract",
+      });
+      continue;
+    }
+    // Dieline annotations (dimensions, part codes, panel labels) get a flag
+    // and skip spell-check entirely — they don't appear on the printed carton.
+    const annotation = classifyAnnotation(w.text);
+    if (annotation.isAnnotation) {
+      out.push({
+        text: w.text,
+        originalText: w.text,
+        confidence: w.confidence,
+        bbox: w.bbox,
+        language: "other",
+        isMisspelled: false,
+        isAnnotation: true,
         suggestions: [],
         source: "tesseract",
       });
@@ -98,6 +119,7 @@ export async function voteWords(
         bbox: w.bbox,
         language: tessCheck.language,
         isMisspelled: tessCheck.isMisspelled,
+        isAnnotation: false,
         suggestions: tessCheck.suggestions,
         source: "tesseract",
       });
@@ -113,6 +135,7 @@ export async function voteWords(
         bbox: w.bbox,
         language: "en",
         isMisspelled: false,
+        isAnnotation: false,
         suggestions: [],
         source: paddleWords.length > 0 ? "both" : "tesseract",
       });
@@ -144,6 +167,7 @@ export async function voteWords(
           bbox: w.bbox,
           language: "en",
           isMisspelled: false,
+          isAnnotation: false,
           suggestions: [],
           source: "paddle",
         });
@@ -158,6 +182,7 @@ export async function voteWords(
           bbox: w.bbox,
           language: "en",
           isMisspelled: true,
+          isAnnotation: false,
           suggestions: tessCheck.suggestions,
           source: "both",
         });
@@ -174,6 +199,7 @@ export async function voteWords(
       bbox: w.bbox,
       language: "en",
       isMisspelled: true,
+      isAnnotation: false,
       suggestions: tessCheck.suggestions,
       source: "tesseract",
     });

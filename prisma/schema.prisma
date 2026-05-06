@@ -28,6 +28,7 @@ enum PrintStatus {
   PROCESSING
   MATCH
   MISMATCH
+  ALIGNMENT_UNCERTAIN
   FAILED
 }
 
@@ -53,6 +54,15 @@ model Artwork {
   originalPath   String        // storage/artwork/{id}/original.{ext}
   normalizedPath String?       // storage/artwork/{id}/normalized.png
   ocrJsonPath    String?       // storage/artwork/{id}/ocr.json
+  /// Auto-extracted printable-area mask (white = printable, black = trim/margin).
+  printableMaskPath String?    // storage/artwork/{id}/mask.png
+  /// Bounding box (in normalized.png coords) of the printable area; null if mask extraction failed.
+  printableX     Int?
+  printableY     Int?
+  printableW     Int?
+  printableH     Int?
+  /// Fraction (0..1) of the normalized canvas covered by the printable area.
+  printableCoverage Float?
   status         ArtworkStatus @default(PENDING_OCR)
   uploadedById   String
   uploadedBy     User          @relation("UploadedArtwork", fields: [uploadedById], references: [id])
@@ -79,6 +89,11 @@ model OCRWord {
   bboxH        Int
   confidence   Float
   isMisspelled Boolean @default(false)
+  /// True if the word is a dieline annotation (dimensions, codes, keys) that
+  /// will not be on the printed carton — excluded from spell-check display.
+  isAnnotation Boolean @default(false)
+  /// True if the word's bbox sits outside the artwork's printable mask.
+  isOutsidePrintable Boolean @default(false)
   suggestions  String? // JSON array of suggestion strings
   overrideText String? // reviewer-accepted correction
   createdAt    DateTime @default(now())
@@ -98,8 +113,17 @@ model PrintJob {
   diffScore        Float?      // 0 (identical) to 1 (completely different)
   verdict          String?     // "MATCH" | "MISMATCH"
   defectCount      Int?        // number of distinct defect regions detected
-  alignmentMethod  String?     // "homography" | "fallback-resize"
+  alignmentMethod  String?     // "homography-orb" | "homography-akaze" | "ecc" | "fallback-resize"
   goodMatches      Int?        // number of feature-match pairs passing Lowe's ratio test
+  /// 0..1 confidence the alignment is geometrically sound (inlier ratio + reprojection).
+  alignmentConfidence Float?
+  /// Pixel-diff ratio measured INSIDE the printable mask only (the meaningful score).
+  maskedDiffScore  Float?
+  /// Pixel-diff ratio measured across the entire frame (legacy / debug signal).
+  globalDiffScore  Float?
+  /// Optional human-readable reason explaining the verdict (e.g. "alignment
+  /// confidence too low — re-photograph the carton on a flat background").
+  statusReason     String?
   uploadedById     String
   uploadedBy       User        @relation("UploadedPrint", fields: [uploadedById], references: [id])
   createdAt        DateTime    @default(now())

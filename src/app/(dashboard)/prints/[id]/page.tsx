@@ -40,6 +40,7 @@ const STATUS_TONE: Record<
   PROCESSING: "info",
   MATCH: "success",
   MISMATCH: "danger",
+  ALIGNMENT_UNCERTAIN: "warning",
   FAILED: "warning",
 };
 
@@ -47,6 +48,7 @@ const STATUS_LABEL: Record<string, string> = {
   PROCESSING: "Analyzing",
   MATCH: "Match",
   MISMATCH: "Mismatch",
+  ALIGNMENT_UNCERTAIN: "Re-photograph needed",
   FAILED: "Failed",
 };
 
@@ -88,6 +90,20 @@ export default async function PrintDetail({
         }
       />
 
+      {job.statusReason && (
+        <div
+          className={`mb-4 rounded-xl border p-4 text-sm ${
+            job.status === "ALIGNMENT_UNCERTAIN"
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : job.status === "MISMATCH"
+                ? "border-red-200 bg-red-50 text-red-900"
+                : "border-slate-200 bg-slate-50 text-slate-700"
+          }`}
+        >
+          {job.statusReason}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
         <InspectionClient
           artworkUrl={artworkUrl}
@@ -115,11 +131,20 @@ export default async function PrintDetail({
               <Row label="Uploaded by">
                 {job.uploadedBy?.name ?? job.uploadedBy?.email}
               </Row>
-              <Row label="Diff score">
-                {job.diffScore != null
-                  ? `${(job.diffScore * 100).toFixed(2)}%`
-                  : "—"}
+              <Row label="Diff (printable)">
+                {job.maskedDiffScore != null
+                  ? `${(job.maskedDiffScore * 100).toFixed(2)}%`
+                  : job.diffScore != null
+                    ? `${(job.diffScore * 100).toFixed(2)}%`
+                    : "—"}
               </Row>
+              {job.globalDiffScore != null && (
+                <Row label="Diff (full frame)">
+                  <span className="text-slate-500">
+                    {`${(job.globalDiffScore * 100).toFixed(2)}%`}
+                  </span>
+                </Row>
+              )}
               <Row label="Defect regions">
                 {job.defectCount ?? report?.regions.length ?? "—"}
               </Row>
@@ -129,6 +154,21 @@ export default async function PrintDetail({
                   {job.goodMatches != null && ` (${job.goodMatches} matches)`}
                 </span>
               </Row>
+              {job.alignmentConfidence != null && (
+                <Row label="Alignment confidence">
+                  <span
+                    className={
+                      job.alignmentConfidence >= 0.7
+                        ? "font-semibold text-emerald-600"
+                        : job.alignmentConfidence >= 0.35
+                          ? "font-semibold text-amber-600"
+                          : "font-semibold text-red-600"
+                    }
+                  >
+                    {`${Math.round(job.alignmentConfidence * 100)}%`}
+                  </span>
+                </Row>
+              )}
               <Row label="Created">
                 {job.createdAt.toISOString().slice(0, 19).replace("T", " ")}
               </Row>

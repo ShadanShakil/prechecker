@@ -25,6 +25,8 @@ type Word = {
   bbox: { x: number; y: number; w: number; h: number };
   confidence: number;
   isMisspelled: boolean;
+  isAnnotation: boolean;
+  isOutsidePrintable: boolean;
   suggestions: string[];
   overrideText: string | null;
 };
@@ -70,8 +72,22 @@ export default function ArtworkReview({
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
 
+  // Real text problems = misspelled tokens that are NOT dieline annotations
+  // (dimensions, codes, panel labels) and are inside the printable area.
+  // Annotations and out-of-mask tokens are filtered by default so reviewers
+  // only see actionable issues.
   const misspelled = useMemo(
-    () => words.filter((w) => w.isMisspelled),
+    () =>
+      words.filter(
+        (w) => w.isMisspelled && !w.isAnnotation && !w.isOutsidePrintable,
+      ),
+    [words],
+  );
+  const filteredCount = useMemo(
+    () =>
+      words.filter(
+        (w) => w.isMisspelled && (w.isAnnotation || w.isOutsidePrintable),
+      ).length,
     [words],
   );
   const decided =
@@ -376,6 +392,12 @@ export default function ArtworkReview({
           <p className="mt-0.5 text-xs text-slate-500">
             {misspelled.length} error{misspelled.length === 1 ? "" : "s"}{" "}
             detected
+            {filteredCount > 0 && (
+              <span className="ml-1 text-slate-400">
+                · {filteredCount} dieline annotation
+                {filteredCount === 1 ? "" : "s"} hidden
+              </span>
+            )}
           </p>
 
           <div className="mt-4 space-y-3">
