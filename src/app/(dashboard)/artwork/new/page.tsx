@@ -1,13 +1,29 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef, type DragEvent } from "react";
+import { motion } from "framer-motion";
+import { UploadCloud, FileImage, Loader2, AlertCircle } from "lucide-react";
+import { Callout } from "@/components/ui/Callout";
+import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { MotionPage } from "@/components/ui/MotionPage";
 
 export default function NewArtworkPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) setFile(f);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,44 +52,121 @@ export default function NewArtworkPage() {
   }
 
   return (
-    <div className="max-w-xl space-y-6">
-      <h1 className="text-2xl font-semibold">Upload artwork</h1>
-      <p className="text-sm text-slate-500">
-        Accepts PNG, JPG, or WebP. The file is OCR&apos;d immediately — English and Arabic words
-        are extracted and compared against their respective dictionaries.
-      </p>
-      <form
-        onSubmit={submit}
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-6"
-      >
-        <label className="block text-sm">
-          Title (optional)
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
-            placeholder="e.g. Mango Juice 1L front panel"
-          />
-        </label>
-        <label className="block text-sm">
-          Artwork file
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            required
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="mt-1 w-full text-sm"
-          />
-        </label>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          type="submit"
-          disabled={loading || !file}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {loading ? "Uploading & processing…" : "Upload & run OCR"}
-        </button>
-      </form>
-    </div>
+    <MotionPage>
+      <PageHeader
+        title="Upload Artwork"
+        subtitle="Step 1 of 2 — Pre-Print Validation"
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+        <form onSubmit={submit}>
+          <Card className="p-6">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              className={`group relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 text-center transition-colors ${
+                dragOver
+                  ? "border-[var(--color-brand-500)] bg-blue-50/60"
+                  : file
+                    ? "border-emerald-300 bg-emerald-50/50"
+                    : "border-slate-300 bg-slate-50/60 hover:border-[var(--color-brand-500)] hover:bg-blue-50/40"
+              }`}
+            >
+              <motion.div
+                animate={{
+                  y: dragOver ? -4 : 0,
+                  scale: dragOver ? 1.05 : 1,
+                }}
+                className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
+                  file ? "bg-emerald-100 text-emerald-600" : "bg-white text-blue-600 shadow-sm"
+                }`}
+              >
+                {file ? <FileImage size={26} /> : <UploadCloud size={26} />}
+              </motion.div>
+              {file ? (
+                <>
+                  <div className="text-sm font-semibold text-slate-900">
+                    {file.name}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {(file.size / 1024).toFixed(1)} KB · click to replace
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Drop file or click to upload
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    PDF, AI, SVG, PNG, JPG
+                  </div>
+                </>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+
+            <label className="mt-6 block">
+              <span className="block text-sm font-medium text-slate-800">
+                Title (optional)
+              </span>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Mango Juice 1L front panel"
+                className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[var(--color-brand-500)] focus:ring-2 focus:ring-[var(--color-brand-500)]/30 focus:outline-none"
+              />
+            </label>
+
+            {error && (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                <AlertCircle size={16} className="mt-0.5 flex-none" />
+                {error}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="submit"
+                disabled={loading || !file}
+                iconLeft={
+                  loading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <UploadCloud size={16} />
+                  )
+                }
+              >
+                {loading ? "Uploading & processing…" : "Upload & run OCR"}
+              </Button>
+            </div>
+          </Card>
+        </form>
+
+        <div className="space-y-4">
+          <Callout title="What happens next?" tone="brand">
+            AI will extract all text and check for spelling errors in English
+            and Arabic, then surface issues with one-click fixes for the
+            reviewer.
+          </Callout>
+          <Callout tone="info">
+            Best results come from a top-down, high-resolution photo of the
+            flat artwork with no perspective distortion.
+          </Callout>
+        </div>
+      </div>
+    </MotionPage>
   );
 }

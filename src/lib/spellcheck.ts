@@ -1,4 +1,5 @@
 import { suggestionsForWord, detectLanguage } from "./spellcheck-core";
+import { isInCustomDict } from "./carton-dict";
 
 export type SpellResult = {
   word: string;
@@ -22,6 +23,12 @@ export async function checkWord(word: string): Promise<SpellResult> {
   const lang = detectLanguage(trimmed);
   if (lang === "other") {
     return { word: trimmed, language: "other", isMisspelled: false, suggestions: [] };
+  }
+  // Custom carton dictionary trumps the generic trie. This catches brand
+  // names ("amazon.ae"), country codes ("UAE"), and stock Arabic phrases
+  // that ship on packaging but aren't in @cspell/dict-*.
+  if (isInCustomDict(trimmed, lang)) {
+    return { word: trimmed, language: lang, isMisspelled: false, suggestions: [] };
   }
   const result = await suggestionsForWord(trimmed, lang);
   return {
